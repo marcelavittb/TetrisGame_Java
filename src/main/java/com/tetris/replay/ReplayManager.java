@@ -13,9 +13,13 @@ public class ReplayManager {
 
     public static void saveReplay(String playerName, int score, List<GameAction> actions) {
         File dir = new File(REPLAY_DIR);
-        if (!dir.exists()) dir.mkdirs();
+        if (!dir.exists()) {
+            boolean created = dir.mkdirs();
+            System.out.println("Diretório criado: " + created);
+        }
 
         String filename = String.format("%s/%s_%d.replay", REPLAY_DIR, playerName, score);
+        System.out.println("Tentando salvar replay em: " + filename);
         try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(filename))) {
             oos.writeObject(actions);
             logger.log(Level.INFO, "Replay salvo: {0}", filename);
@@ -26,8 +30,11 @@ public class ReplayManager {
 
     @SuppressWarnings("unchecked")
     public static List<GameAction> loadReplay(String filename) {
+        System.out.println("Tentando carregar replay de: " + filename);
         try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(filename))) {
-            return (List<GameAction>) ois.readObject();
+            List<GameAction> actions = (List<GameAction>) ois.readObject();
+            System.out.println("Replay carregado com " + actions.size() + " ações.");
+            return actions;
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Erro ao carregar replay: {0}", e.getMessage());
             return new ArrayList<>();

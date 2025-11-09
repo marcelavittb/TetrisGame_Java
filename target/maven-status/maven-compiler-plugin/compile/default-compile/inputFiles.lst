@@ -7,6 +7,7 @@ C:\Users\marce\Desktop\Tetris\src\main\java\com\tetris\game\PlayManager.java
 C:\Users\marce\Desktop\Tetris\src\main\java\com\tetris\model\Mino.java
 C:\Users\marce\Desktop\Tetris\src\main\java\com\tetris\model\Mino_Bar.java
 C:\Users\marce\Desktop\Tetris\src\main\java\com\tetris\ui\Main.java
+C:\Users\marce\Desktop\Tetris\src\main\java\com\tetris\ui\MainFrame.java
 C:\Users\marce\Desktop\Tetris\src\main\java\com\tetris\model\Mino_L1.java
 C:\Users\marce\Desktop\Tetris\src\main\java\com\tetris\model\Mino_T.java
 C:\Users\marce\Desktop\Tetris\src\main\java\com\tetris\persistence\CreateDB.java
@@ -16,5 +17,6 @@ C:\Users\marce\Desktop\Tetris\src\main\java\com\tetris\replay\ReplayManager.java
 C:\Users\marce\Desktop\Tetris\src\main\java\com\tetris\ui\ReplayDialog.java
 C:\Users\marce\Desktop\Tetris\src\main\java\com\tetris\model\Mino_Z1.java
 C:\Users\marce\Desktop\Tetris\src\main\java\com\tetris\model\PlayerScore.java
+C:\Users\marce\Desktop\Tetris\src\main\java\com\tetris\ui\Login.java
 C:\Users\marce\Desktop\Tetris\src\main\java\com\tetris\model\Mino_L2.java
 C:\Users\marce\Desktop\Tetris\src\main\java\com\tetris\persistence\ScoreRepository.java

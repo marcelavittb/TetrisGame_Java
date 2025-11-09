@@ -16,38 +16,26 @@ public class GamePanel extends JPanel implements ActionListener {
     private PlayManager playManager;
     private Timer timer;
 
-    public GamePanel(String playerName) {
-        this.setPreferredSize(new Dimension(WIDTH, HEIGHT));
-        this.setBackground(Color.BLACK);
-        this.setFocusable(true);
-        this.requestFocus();
+    public GamePanel(PlayManager playManager) {
+        this.playManager = playManager;
+        setPreferredSize(new Dimension(WIDTH, HEIGHT));
+        setBackground(Color.BLACK);
+        setFocusable(true);
+        addKeyListener(new KeyHandler());
 
-        playManager = new PlayManager(playerName);
-        this.addKeyListener(new KeyHandler());
-
-        timer = new Timer(16, this); // ~60 FPS
+        timer = new Timer(16, this); // Aproximadamente 60 FPS
         timer.start();
     }
 
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
-
-        Graphics2D g2 = (Graphics2D) g;
-
-        // Antialias se quiser:
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-        playManager.draw(g2);
+        playManager.draw((Graphics2D) g);
     }
 
     @Override
     public void actionPerformed(ActionEvent e) {
         playManager.update();
         repaint();
-    }
-
-    public PlayManager getPlayManager() {
-        return playManager;
     }
 }

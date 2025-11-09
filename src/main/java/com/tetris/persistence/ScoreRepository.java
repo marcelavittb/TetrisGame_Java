@@ -57,7 +57,6 @@ public class ScoreRepository {
         int limit = Math.min(records.size(), n);
         for (int i = 0; i < limit; i++) {
             ScoreRecord sr = records.get(i);
-            // Usa construtor simplificado para não dar erro de parâmetros
             top.add(new PlayerScore(sr.playerName, sr.score));
         }
         return top;
@@ -66,6 +65,16 @@ public class ScoreRepository {
     public static byte[] getReplayData(int scoreIndex) {
         if (scoreIndex >= 0 && scoreIndex < records.size()) {
             return records.get(scoreIndex).replayData;
+        }
+        return null;
+    }
+
+    // Novo método para buscar replay por nome e pontuação
+    public static byte[] getReplayDataByScore(String name, int score) {
+        for (ScoreRecord sr : records) {
+            if (sr.playerName.equals(name) && sr.score == score) {
+                return sr.replayData;
+            }
         }
         return null;
     }

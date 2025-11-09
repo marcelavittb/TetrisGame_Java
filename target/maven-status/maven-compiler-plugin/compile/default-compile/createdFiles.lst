@@ -4,10 +4,12 @@ com\tetris\model\Block.class
 com\tetris\model\Mino_Z1.class
 com\tetris\sound\Sound.class
 com\tetris\replay\ReplayManager.class
+com\tetris\ui\Login.class
 com\tetris\model\Mino_L1.class
 com\tetris\persistence\ScoreRepository$ScoreRecord.class
 com\tetris\input\KeyHandler.class
 com\tetris\persistence\ScoreRepository.class
+com\tetris\ui\MainFrame.class
 com\tetris\model\GameAction.class
 com\tetris\game\PlayManager.class
 com\tetris\model\Mino_Bar.class
