@@ -3,12 +3,21 @@ package com.tetris.input;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 
+/**
+ * KeyHandler que é tambem KeyAdapter (pode ser adicionado como listener)
+ * e expõe flags estáticas que o PlayManager checa.
+ *
+ * Observações:
+ * - Usamos campos 'volatile' para evitar efeitos de cache em threads diferentes.
+ * - Incluí rPressed para recomeçar (se você usar).
+ */
 public class KeyHandler extends KeyAdapter {
-    public static boolean leftPressed = false;
-    public static boolean rightPressed = false;
-    public static boolean upPressed = false;
-    public static boolean downPressed = false;
-    public static boolean pausePressed = false;
+    public static volatile boolean leftPressed = false;
+    public static volatile boolean rightPressed = false;
+    public static volatile boolean upPressed = false;
+    public static volatile boolean downPressed = false;
+    public static volatile boolean pausePressed = false;
+    public static volatile boolean rPressed = false; // tecla 'R' para reiniciar
 
     @Override
     public void keyPressed(KeyEvent e) {
@@ -30,6 +39,13 @@ public class KeyHandler extends KeyAdapter {
             case KeyEvent.VK_P:
                 pausePressed = !pausePressed;
                 break;
+            case KeyEvent.VK_R:
+                rPressed = true;
+                break;
+            case KeyEvent.VK_SPACE:
+                // opcional: mapa de espaço -> drop rápido
+                downPressed = true;
+                break;
         }
     }
 
@@ -48,6 +64,12 @@ public class KeyHandler extends KeyAdapter {
                 upPressed = false;
                 break;
             case KeyEvent.VK_DOWN:
+                downPressed = false;
+                break;
+            case KeyEvent.VK_R:
+                rPressed = false;
+                break;
+            case KeyEvent.VK_SPACE:
                 downPressed = false;
                 break;
         }

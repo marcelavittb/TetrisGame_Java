@@ -1,21 +1,42 @@
 package com.tetris.game;
 
-import com.tetris.model.*;
-import com.tetris.persistence.ScoreRepository;
-import com.tetris.model.PlayerScore;
-import com.tetris.input.KeyHandler;
-import com.tetris.ui.ReplayDialog;
-import com.tetris.replay.ReplayManager;  // Importe o ReplayManager
-import com.tetris.ui.GamePanel;
-
-import javax.swing.*;
-import java.awt.*;
-import java.io.*;
+import java.awt.AlphaComposite;
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.GradientPaint;
+import java.awt.Graphics2D;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.logging.Logger;
 
+import javax.swing.JFrame;
+import javax.swing.JOptionPane;
+import javax.swing.SwingUtilities;
+
+import com.tetris.input.KeyHandler;
+import com.tetris.model.Block;
+import com.tetris.model.GameAction;
+import com.tetris.model.Mino;
+import com.tetris.model.Mino_Bar;
+import com.tetris.model.Mino_L1;
+import com.tetris.model.Mino_L2;
+import com.tetris.model.Mino_Square;
+import com.tetris.model.Mino_T;
+import com.tetris.model.Mino_Z1;
+import com.tetris.model.Mino_Z2;
+import com.tetris.model.PlayerScore;
+import com.tetris.persistence.ScoreRepository;
+import com.tetris.replay.ReplayManager;
+import com.tetris.ui.GamePanel;
+
+/**
+ * PlayManager completo — lógica do jogo, replay e desenho.
+ * Observação: usa GameOverDialog e ReplayDialogEnhanced para diálogos.
+ */
 public class PlayManager implements Serializable {
 
     private static final long serialVersionUID = 1L;
@@ -25,9 +46,9 @@ public class PlayManager implements Serializable {
     public static final int BLOCK_SIZE = 30;
     public static final int BOARD_WIDTH = 10;
     public static final int BOARD_HEIGHT = 20;
-    public static final int GAME_X = 300;
+    public static final int GAME_X = 140;
     public static final int GAME_Y = 50;
-    public static final int INFO_X = 650;
+    public static final int INFO_X = 520;
 
     private final int WIDTH = BOARD_WIDTH * BLOCK_SIZE;
     private final int HEIGHT = BOARD_HEIGHT * BLOCK_SIZE;
@@ -65,6 +86,10 @@ public class PlayManager implements Serializable {
     private final int NEXTMINO_X;
     private final int NEXTMINO_Y;
 
+    // RNG and seed for deterministic piece generation
+    private transient Random rng;
+    private long gameSeed = 0L;
+
     public PlayManager(String playerName, JFrame parentFrame) {
         this.playerName = playerName;
         this.parentFrame = parentFrame;
@@ -77,8 +102,12 @@ public class PlayManager implements Serializable {
         MINO_START_X = left_x + BLOCK_SIZE * (BOARD_WIDTH / 2 - 1);
         MINO_START_Y = top_y + BLOCK_SIZE;
 
-        NEXTMINO_X = INFO_X;
-        NEXTMINO_Y = top_y + 100;
+        NEXTMINO_X = INFO_X + 20;
+        NEXTMINO_Y = top_y + 60;
+
+        // Inicializa RNG com seed determinística para permitir replay fiel
+        gameSeed = new Random().nextLong();
+        rng = new Random(gameSeed);
 
         currentMino = pickMino();
         currentMino.setInitialPosition(MINO_START_X, MINO_START_Y);
@@ -94,15 +123,15 @@ public class PlayManager implements Serializable {
     }
 
     private Mino pickMino() {
-        int i = new Random().nextInt(7) + 1;
+        int i = (rng == null ? new Random().nextInt(7) : rng.nextInt(7)); // 0..6
         switch (i) {
-            case 1: return new Mino_L1();
-            case 2: return new Mino_L2();
-            case 3: return new Mino_Square();
-            case 4: return new Mino_Bar();
-            case 5: return new Mino_T();
-            case 6: return new Mino_Z1();
-            case 7: return new Mino_Z2();
+            case 0: return new Mino_L1();
+            case 1: return new Mino_L2();
+            case 2: return new Mino_Square();
+            case 3: return new Mino_Bar();
+            case 4: return new Mino_T();
+            case 5: return new Mino_Z1();
+            case 6: return new Mino_Z2();
             default: return new Mino_Square();
         }
     }
@@ -158,21 +187,18 @@ public class PlayManager implements Serializable {
                 recordAction(GameAction.ROTATE);
                 KeyHandler.upPressed = false;
             }
+            
         }
     }
 
     private void playReplayStep() {
-        System.out.println("playReplayStep chamado - replayIndex: " + replayIndex + ", total ações: " + replayActions.size() + ", frameCount: " + frameCount);
-
         if (replayIndex >= replayActions.size()) {
-            System.out.println("Replay finalizado - todas as ações executadas.");
             isReplayMode = false;
             return;
         }
 
         GameAction action = replayActions.get(replayIndex);
         if (frameCount >= action.frameNumber) {
-            System.out.println("Executando ação: " + action.actionType + " no frame " + frameCount + " (replayIndex: " + replayIndex + ")");
             switch (action.actionType) {
                 case GameAction.MOVE_LEFT:
                     moveMinoLeft();
@@ -185,6 +211,8 @@ public class PlayManager implements Serializable {
                     break;
                 case GameAction.DROP:
                     moveMinoDown();
+                    break;
+                case GameAction.PAUSE:
                     break;
             }
             replayIndex++;
@@ -203,7 +231,6 @@ public class PlayManager implements Serializable {
 
     private void recordAction(int actionType) {
         replayActions.add(new GameAction(actionType, frameCount));
-        System.out.println("Ação gravada: " + actionType + " no frame " + frameCount + ". Total ações: " + replayActions.size());
     }
 
     private boolean moveMinoDown() {
@@ -306,13 +333,22 @@ public class PlayManager implements Serializable {
     }
 
     private void saveGameData() {
-        // Substitua o salvamento para usar ReplayManager
-        ReplayManager.saveReplay(playerName, score, replayActions);
-        logger.info("Score e replay salvos via ReplayManager");
+        // Salva replay com seed
+        ReplayManager.saveReplay(playerName, score, gameSeed, replayActions);
+        logger.info("Replay salvo via ReplayManager (incluindo seed).");
+
+        // Tenta salvar score no ScoreRepository — adapte o método se seu repo tiver outro nome
+        try {
+            ScoreRepository.saveScore(new PlayerScore(playerName, score));
+            logger.info("Score salvo via ScoreRepository: " + playerName + " - " + score);
+        } catch (Throwable t) {
+            // se o ScoreRepository tiver API diferente, não vamos travar o jogo — me envie o código do repo e eu ajusto
+            logger.warning("Não foi possível salvar score automaticamente no ScoreRepository: " + t.getMessage());
+        }
     }
 
     public void resetGame() {
-        resetGame(true);  // Limpa replay por padrão
+        resetGame(true);
     }
 
     public void resetGame(boolean clearReplay) {
@@ -328,6 +364,9 @@ public class PlayManager implements Serializable {
         frameCount = 0;
 
         staticBlocks.clear();
+        gameSeed = new Random().nextLong();
+        rng = new Random(gameSeed);
+
         currentMino = pickMino();
         currentMino.setInitialPosition(MINO_START_X, MINO_START_Y);
         nextMino = pickMino();
@@ -339,118 +378,201 @@ public class PlayManager implements Serializable {
     }
 
     public void draw(Graphics2D g2) {
-        g2.setColor(Color.black);
-        g2.fillRect(0, 0, GamePanel.WIDTH, GamePanel.HEIGHT);
+        // --- BACKGROUND ---
+        int w = GamePanel.WIDTH;
+        int h = GamePanel.HEIGHT;
+        GradientPaint gp = new GradientPaint(0, 0, new Color(18, 24, 37), 0, h, new Color(40, 60, 90));
+        g2.setPaint(gp);
+        g2.fillRect(0, 0, w, h);
 
-        g2.setColor(Color.white);
-        g2.drawRect(left_x, top_y, WIDTH, HEIGHT);
+        // Board card
+        int boardPad = 8;
+        int boardX = left_x - boardPad;
+        int boardY = top_y - boardPad;
+        int boardW = WIDTH + boardPad*2;
+        int boardH = HEIGHT + boardPad*2;
 
+        g2.setColor(new Color(0,0,0,100));
+        g2.fillRoundRect(boardX+6, boardY+6, boardW, boardH, 16, 16);
+
+        g2.setColor(new Color(12, 17, 28, 230));
+        g2.fillRoundRect(boardX, boardY, boardW, boardH, 16, 16);
+
+        g2.setColor(new Color(255,255,255,60));
+        g2.setStroke(new BasicStroke(2f));
+        g2.drawRoundRect(boardX, boardY, boardW, boardH, 16, 16);
+
+        g2.setColor(new Color(10, 18, 30));
+        g2.fillRect(left_x, top_y, WIDTH, HEIGHT);
+
+        // blocks
         for (Block b : staticBlocks) b.draw(g2);
-
         if (currentMino != null) currentMino.draw(g2);
 
-        drawNextPiece(g2);
+        // subtle grid
+        g2.setColor(new Color(255,255,255,12));
+        for (int gx = left_x; gx <= right_x; gx += BLOCK_SIZE) g2.drawLine(gx, top_y, gx, bottom_y);
+        for (int gy = top_y; gy <= bottom_y; gy += BLOCK_SIZE) g2.drawLine(left_x, gy, right_x, gy);
 
-        drawStatusPanel(g2);
+        // NEXT card
+        int cardW = 160;
+        int cardH = 160;
+        int cardX = INFO_X;
+        int cardY = NEXTMINO_Y - 30;
 
-        if (gameOver) {
-            g2.setFont(new Font("Arial", Font.BOLD, 50));
-            g2.setColor(Color.red);
-            String text = "GAME OVER";
-            FontMetrics fm = g2.getFontMetrics();
-            int x = left_x + (WIDTH - fm.stringWidth(text)) / 2;
-            int y = top_y + (HEIGHT + fm.getAscent()) / 2;
-            g2.drawString(text, x, y);
-        }
-    }
+        g2.setColor(new Color(0,0,0,80));
+        g2.fillRoundRect(cardX+4, cardY+6, cardW, cardH, 14, 14);
 
-    private void drawNextPiece(Graphics2D g2) {
-        int boxX = NEXTMINO_X;
-        int boxY = NEXTMINO_Y;
-        int boxSize = BLOCK_SIZE * 4;
+        g2.setColor(new Color(20, 28, 44, 220));
+        g2.fillRoundRect(cardX, cardY, cardW, cardH, 14, 14);
 
-        g2.setColor(Color.white);
-        g2.drawRect(boxX, boxY, boxSize, boxSize);
+        g2.setColor(new Color(255,255,255,70));
+        g2.drawRoundRect(cardX, cardY, cardW, cardH, 14, 14);
 
-        if (nextMino == null) return;
+        g2.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        g2.setColor(Color.WHITE);
+        g2.drawString("NEXT", cardX + 16, cardY + 28);
 
-        int centerX = boxX + boxSize / 2;
-        int centerY = boxY + boxSize / 2;
+        if (nextMino != null) {
+            int centerX = cardX + cardW/2;
+            int centerY = cardY + cardH/2 + 8;
 
-        int pivotX = nextMino.b[0].x;
-        int pivotY = nextMino.b[0].y;
+            int pivotX = nextMino.b[0].x;
+            int pivotY = nextMino.b[0].y;
 
-        int minRelX = Integer.MAX_VALUE, minRelY = Integer.MAX_VALUE;
-        int maxRelX = Integer.MIN_VALUE, maxRelY = Integer.MIN_VALUE;
+            int minRelX = Integer.MAX_VALUE, minRelY = Integer.MAX_VALUE;
+            int maxRelX = Integer.MIN_VALUE, maxRelY = Integer.MIN_VALUE;
 
-        int[][] relBlocks = new int[4][2];
-        for (int i = 0; i < 4; i++) {
-            int relX = (nextMino.b[i].x - pivotX) / BLOCK_SIZE;
-            int relY = (nextMino.b[i].y - pivotY) / BLOCK_SIZE;
-            relBlocks[i][0] = relX;
-            relBlocks[i][1] = relY;
-            if (relX < minRelX) minRelX = relX;
-            if (relY < minRelY) minRelY = relY;
-            if (relX > maxRelX) maxRelX = relX;
-            if (relY > maxRelY) maxRelY = relY;
-        }
+            int[][] relBlocks = new int[4][2];
+            for (int i = 0; i < 4; i++) {
+                int relX = (nextMino.b[i].x - pivotX) / BLOCK_SIZE;
+                int relY = (nextMino.b[i].y - pivotY) / BLOCK_SIZE;
+                relBlocks[i][0] = relX;
+                relBlocks[i][1] = relY;
+                if (relX < minRelX) minRelX = relX;
+                if (relY < minRelY) minRelY = relY;
+                if (relX > maxRelX) maxRelX = relX;
+                if (relY > maxRelY) maxRelY = relY;
+            }
 
-        int relWidth = maxRelX - minRelX + 1;
-        int relHeight = maxRelY - minRelY + 1;
+            int relWidth = maxRelX - minRelX + 1;
+            int relHeight = maxRelY - minRelY + 1;
 
-        int offsetX = centerX - (relWidth * BLOCK_SIZE) / 2;
-        int offsetY = centerY - (relHeight * BLOCK_SIZE) / 2;
+            int blockDrawSize = BLOCK_SIZE - 6;
+            int offsetX = centerX - (relWidth * blockDrawSize) / 2;
+            int offsetY = centerY - (relHeight * blockDrawSize) / 2;
 
-        for (int i = 0; i < 4; i++) {
-            int x = offsetX + (relBlocks[i][0] - minRelX) * BLOCK_SIZE;
-            int y = offsetY + (relBlocks[i][1] - minRelY) * BLOCK_SIZE;
-            g2.setColor(nextMino.b[i].c);
-            g2.fillRect(x, y, BLOCK_SIZE - 2, BLOCK_SIZE - 2);
-            g2.setColor(Color.black);
-            g2.drawRect(x, y, BLOCK_SIZE - 2, BLOCK_SIZE - 2);
-        }
-    }
-
-    private void drawStatusPanel(Graphics2D g2) {
-        int y = top_y + 30;
-        g2.setColor(Color.white);
-        g2.setFont(new Font("Arial", Font.BOLD, 24));
-        g2.drawString("LEVEL: " + level, INFO_X, y);
-        y += 30;
-        g2.drawString("LINES: " + lines, INFO_X, y);
-        y += 30;
-        g2.drawString("SCORE: " + score, INFO_X, y);
-
-        y += 70;
-        g2.setFont(new Font("Arial", Font.BOLD, 26));
-        g2.drawString("NEXT", INFO_X, y);
-        y += 10;
-
-        int size = BLOCK_SIZE * 4;
-        g2.drawRect(INFO_X, y, size, size);
-
-        y += size + 40;
-        g2.setFont(new Font("Arial", Font.ITALIC, 18));
-        g2.drawString("Top Scores:", INFO_X, y);
-        y += 25;
-
-        g2.setFont(new Font("Arial", Font.PLAIN, 18));
-        List<PlayerScore> top = ScoreRepository.getTopScores(5);
-        if (top.isEmpty()) {
-            g2.drawString("Nenhum score salvo.", INFO_X, y);
-        } else {
-            for (PlayerScore ps : top) {
-                g2.drawString(ps.name + " - " + ps.score, INFO_X, y);
-                y += 22;
+            for (int i = 0; i < 4; i++) {
+                int x = offsetX + (relBlocks[i][0] - minRelX) * blockDrawSize;
+                int y = offsetY + (relBlocks[i][1] - minRelY) * blockDrawSize;
+                g2.setColor(nextMino.b[i].c);
+                g2.fillRoundRect(x, y, blockDrawSize, blockDrawSize, 6, 6);
+                g2.setColor(new Color(0,0,0,60));
+                g2.drawRoundRect(x, y, blockDrawSize, blockDrawSize, 6, 6);
             }
         }
+
+        // STATUS panel
+        int statusX = INFO_X;
+        int statusY = cardY + cardH + 18;
+        int statusW = cardW;
+        int statusH = 180;
+
+        g2.setColor(new Color(0,0,0,60));
+        g2.fillRoundRect(statusX+4, statusY+6, statusW, statusH, 14, 14);
+
+        g2.setColor(new Color(20, 28, 44, 220));
+        g2.fillRoundRect(statusX, statusY, statusW, statusH, 14, 14);
+
+        g2.setColor(new Color(255,255,255,70));
+        g2.drawRoundRect(statusX, statusY, statusW, statusH, 14, 14);
+
+        g2.setColor(Color.WHITE);
+        g2.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        g2.drawString("SCORE", statusX + 16, statusY + 30);
+        g2.setFont(new Font("Segoe UI", Font.BOLD, 24));
+        g2.drawString(String.valueOf(score), statusX + 16, statusY + 62);
+
+        g2.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        g2.drawString("LEVEL: " + level, statusX + 16, statusY + 96);
+        g2.drawString("LINES: " + lines, statusX + 16, statusY + 120);
+
+        // top scores alinhados (monospace)
+        g2.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 13));
+        int ty = statusY + 148;
+        List<PlayerScore> top = null;
+        try {
+            top = ScoreRepository.getTopScores(5);
+        } catch (Throwable t) {
+            logger.warning("Erro ao obter top scores: " + t.getMessage());
+        }
+        if (top == null || top.isEmpty()) {
+            g2.drawString("Nenhum score salvo.", statusX + 16, ty);
+        } else {
+            for (PlayerScore ps : top) {
+                String name = ps.name == null ? "anon" : ps.name;
+                int s = ps.score;
+                if (name.length() > 12) name = name.substring(0, 12);
+                String line = String.format("%-12s %6d", name, s);
+                g2.drawString(line, statusX + 16, ty);
+                ty += 18;
+            }
+        }
+
+        // overlay GAME OVER
+        if (gameOver) {
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.85f));
+            g2.setColor(new Color(8, 10, 15));
+            g2.fillRoundRect(left_x + 20, top_y + (HEIGHT/2) - 60, WIDTH - 40, 120, 12, 12);
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1f));
+            g2.setFont(new Font("Segoe UI", Font.BOLD, 42));
+            g2.setColor(new Color(255,80,80));
+            String text = "GAME OVER";
+            FontMetrics fm = g2.getFontMetrics();
+            int tx = left_x + (WIDTH - fm.stringWidth(text)) / 2;
+            int ty2 = top_y + (HEIGHT/2);
+            g2.drawString(text, tx, ty2);
+
+            g2.setFont(new Font("Segoe UI", Font.PLAIN, 16));
+            g2.setColor(Color.WHITE);
+            String sub = "Pressione 'R' para recomeçar ou abra Replays";
+            FontMetrics fm2 = g2.getFontMetrics();
+            int sx = left_x + (WIDTH - fm2.stringWidth(sub)) / 2;
+            g2.drawString(sub, sx, ty2 + 28);
+        }
     }
 
-    // Método para carregar replay a partir de ações (usado pelo ReplayManager)
+    // Mantém assinatura antiga e adiciona versão com seed
     public void playReplayFromActions(List<GameAction> actions) {
+        playReplayFromActions(actions, 0L);
+    }
+
+    public void playReplayFromActions(List<GameAction> actions, long seed) {
         System.out.println("Carregando replay a partir de ações...");
-        replayActions = new ArrayList<>(actions);  // Copia as ações
-        // Reset manual do estado do jogo, SEM limpar replayActions
+        replayActions = new ArrayList<>();
+        for (GameAction ga : actions) {
+            replayActions.add(new GameAction(ga.actionType, ga.frameNumber));
+        }
+
+        // Normaliza frameNumbers
+        if (!replayActions.isEmpty()) {
+            long base = replayActions.get(0).frameNumber;
+            if (base != 0L) {
+                System.out.println("Normalizando replay: subtraindo baseFrame = " + base);
+                for (GameAction ga : replayActions) {
+                    ga.frameNumber = Math.max(0L, ga.frameNumber - base);
+                }
+            }
+        }
+
+        if (seed != 0L) {
+            this.gameSeed = seed;
+            this.rng = new Random(gameSeed);
+        } else {
+            this.gameSeed = 0L;
+            this.rng = new Random();
+        }
+
         score = 0;
         lines = 0;
         level = 1;
@@ -459,25 +581,22 @@ public class PlayManager implements Serializable {
         gameOver = false;
         scoreSaved = false;
         staticBlocks.clear();
+
         currentMino = pickMino();
         currentMino.setInitialPosition(MINO_START_X, MINO_START_Y);
         nextMino = pickMino();
         nextMino.setInitialPosition(NEXTMINO_X + 30, NEXTMINO_Y + 30);
+
         isReplayMode = true;
         replayIndex = 0;
         frameCount = 0;
-        System.out.println("Modo replay ativado com " + actions.size() + " ações.");
+        System.out.println("Modo replay ativado com " + replayActions.size() + " ações. seed=" + this.gameSeed);
     }
 
+    // Abre diálogo de replays melhorado
     public void openReplayDialog(JFrame parent) {
         SwingUtilities.invokeLater(() -> {
-            if (parent != null) {
-                new ReplayDialog(parent, this).setVisible(true);
-            } else {
-                JOptionPane.showMessageDialog(null,
-                        "Não foi possível abrir o diálogo de replay. Janela pai não definida.",
-                        "Erro", JOptionPane.ERROR_MESSAGE);
-            }
+            com.tetris.ui.ReplayDialogEnhanced.open(parent != null ? parent : parentFrame, this);
         });
     }
 
@@ -485,27 +604,25 @@ public class PlayManager implements Serializable {
         openReplayDialog(parentFrame);
     }
 
+    // usa GameOverDialog estilizado
     private void showGameOverOptions() {
         SwingUtilities.invokeLater(() -> {
-            Object[] options = {"Recomeçar", "Ver Replays", "Sair"};
-            int choice = JOptionPane.showOptionDialog(null,
-                    "Pontuação Final: " + score + "\nJogador: " + playerName,
-                    "Game Over",
-                    JOptionPane.YES_NO_CANCEL_OPTION,
-                    JOptionPane.QUESTION_MESSAGE,
-                    null,
-                    options,
-                    options[0]);
-            switch (choice) {
-                case 0:
-                    resetGame();
-                    break;
-                case 1:
-                    openReplayDialog();
-                    break;
-                case 2:
-                    System.exit(0);
-                    break;
+            try {
+                com.tetris.ui.GameOverDialog.showFor(parentFrame, this, score);
+            } catch (Exception ex) {
+                ex.printStackTrace();
+                Object[] options = {"Recomeçar", "Ver Replays", "Sair"};
+                int choice = JOptionPane.showOptionDialog(null,
+                        "Pontuação Final: " + score + "\nJogador: " + playerName,
+                        "Game Over",
+                        JOptionPane.YES_NO_CANCEL_OPTION,
+                        JOptionPane.QUESTION_MESSAGE,
+                        null,
+                        options,
+                        options[0]);
+                if (choice == 0) resetGame();
+                else if (choice == 1) openReplayDialog();
+                else if (choice == 2) System.exit(0);
             }
         });
     }

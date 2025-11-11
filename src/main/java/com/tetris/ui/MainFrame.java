@@ -1,10 +1,19 @@
 package com.tetris.ui;
 
+import java.awt.BorderLayout;
+import java.awt.FlowLayout;
+
+import javax.swing.JButton;
+import javax.swing.JFrame;
+import javax.swing.JPanel;
+
 import com.tetris.game.PlayManager;
 
-import javax.swing.*;
-import java.awt.*;
-
+/**
+ * MainFrame atualizado:
+ * - cria PlayManager e GamePanel
+ * - inicia o GamePanel.start() após o frame ficar visível (garante foco)
+ */
 public class MainFrame extends JFrame {
 
     private PlayManager playManager;
@@ -38,6 +47,7 @@ public class MainFrame extends JFrame {
         setResizable(false);
         setVisible(true);
 
-        gamePanel.requestFocusInWindow();
+        // após o frame visível, inicia o loop do painel (garante que requestFocus funcione)
+        gamePanel.start();
     }
 }

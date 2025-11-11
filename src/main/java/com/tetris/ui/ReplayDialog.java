@@ -1,91 +1,155 @@
 package com.tetris.ui;
 
-import com.tetris.game.PlayManager;
-import com.tetris.replay.ReplayManager;
-import com.tetris.model.GameAction;
-
-import javax.swing.*;
-import java.awt.*;
-import java.awt.event.*;
+import java.awt.BorderLayout;
+import java.awt.Font;
+import java.awt.Frame;
 import java.io.File;
-import java.util.List;
-import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 
+import javax.swing.DefaultListModel;
+import javax.swing.JButton;
+import javax.swing.JDialog;
+import javax.swing.JList;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.ListSelectionModel;
+
+import com.tetris.game.PlayManager;
+import com.tetris.replay.ReplayData;
+import com.tetris.replay.ReplayManager;
+
+/**
+ * ReplayDialog corrigido: garante mapeamento 1:1 entre lista exibida e arrays mappedFiles/replayDatas.
+ */
 public class ReplayDialog extends JDialog {
 
-    private JList<String> listScores;
-    private DefaultListModel<String> listModel;
     private PlayManager playManager;
-    private List<String> replayFiles;
+    private JList<String> fileList;
+    private DefaultListModel<String> listModel;
+    private File[] mappedFiles;       // mapeia índice p/ File
+    private ReplayData[] replayDatas; // mapeia índice p/ ReplayData
 
-    public ReplayDialog(JFrame parent, PlayManager playManager) {
-        super(parent, "Selecione uma partida para replay", true);
+    public ReplayDialog(Frame owner, PlayManager playManager) {
+        super(owner, "Replays disponíveis", true);
         this.playManager = playManager;
+        initUI();
+    }
+
+    private void initUI() {
+        setSize(600, 420);
+        setLocationRelativeTo(getOwner());
+        setLayout(new BorderLayout());
 
         listModel = new DefaultListModel<>();
-        listScores = new JList<>(listModel);
-        listScores.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        JScrollPane scrollPane = new JScrollPane(listScores);
+        fileList = new JList<>(listModel);
+        fileList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        fileList.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
 
-        loadReplayFiles();
+        refreshList();
 
-        JButton btnReplay = new JButton("Ver Replay");
-        btnReplay.addActionListener(e -> playSelectedReplay());
+        add(new JScrollPane(fileList), BorderLayout.CENTER);
 
-        JButton btnCancelar = new JButton("Cancelar");
-        btnCancelar.addActionListener(e -> dispose());
+        JPanel bottom = new JPanel();
+        JButton loadBtn = new JButton("Carregar Replay");
+        JButton refreshBtn = new JButton("Atualizar lista");
+        JButton closeBtn = new JButton("Fechar");
+        bottom.add(loadBtn);
+        bottom.add(refreshBtn);
+        bottom.add(closeBtn);
 
-        JPanel btnPanel = new JPanel();
-        btnPanel.add(btnReplay);
-        btnPanel.add(btnCancelar);
+        add(bottom, BorderLayout.SOUTH);
 
-        setLayout(new BorderLayout());
-        add(scrollPane, BorderLayout.CENTER);
-        add(btnPanel, BorderLayout.SOUTH);
+        loadBtn.addActionListener(e -> onLoad());
+        refreshBtn.addActionListener(e -> refreshList());
+        closeBtn.addActionListener(e -> dispose());
 
-        setSize(400, 300);
-        setLocationRelativeTo(parent);
-    }
-
-    private void loadReplayFiles() {
-        replayFiles = new ArrayList<>();
-        File dir = new File("replays");
-        System.out.println("Verificando diretório: " + dir.getAbsolutePath());
-        if (dir.exists() && dir.isDirectory()) {
-            File[] files = dir.listFiles((d, name) -> name.endsWith(".replay"));
-            System.out.println("Arquivos encontrados: " + (files != null ? files.length : 0));
-            if (files != null) {
-                for (File file : files) {
-                    System.out.println("Arquivo: " + file.getName());
-                    replayFiles.add(file.getName());
-                    listModel.addElement(file.getName().replace(".replay", "").replace("_", " - "));
+        fileList.addMouseListener(new java.awt.event.MouseAdapter() {
+            public void mouseClicked(java.awt.event.MouseEvent evt) {
+                if (evt.getClickCount() == 2) {
+                    onLoad();
                 }
             }
-        } else {
-            System.out.println("Diretório 'replays' não existe ou não é um diretório.");
+        });
+    }
+
+    private void onLoad() {
+        int idx = fileList.getSelectedIndex();
+        if (idx < 0 || mappedFiles == null || idx >= mappedFiles.length) {
+            JOptionPane.showMessageDialog(this, "Selecione um arquivo de replay.", "Atenção", JOptionPane.WARNING_MESSAGE);
+            return;
         }
-        if (listModel.isEmpty()) {
-            listModel.addElement("Nenhum replay salvo");
+        File selected = mappedFiles[idx];
+        ReplayData data = replayDatas[idx];
+
+        if (selected == null) {
+            JOptionPane.showMessageDialog(this, "Arquivo inválido.", "Erro", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        if (data == null) {
+            // tentativa de recarregar (fallback)
+            data = ReplayManager.loadReplay(selected.getAbsolutePath());
+            replayDatas[idx] = data;
+        }
+
+        if (data != null && data.actions != null) {
+            // Debug: imprime informações no console para confirmar arquivo e seed
+            System.out.println("Carregando arquivo: " + selected.getAbsolutePath());
+            System.out.println("score=" + data.score + " actions=" + data.actions.size() + " seed=" + data.seed);
+
+            // Inicia replay no PlayManager com seed
+            playManager.playReplayFromActions(data.actions, data.seed);
+            JOptionPane.showMessageDialog(this, "Replay carregado. Feche este diálogo para ver o replay.", "Sucesso", JOptionPane.INFORMATION_MESSAGE);
+            dispose();
+        } else {
+            JOptionPane.showMessageDialog(this, "Falha ao carregar o replay.", "Erro", JOptionPane.ERROR_MESSAGE);
         }
     }
 
-    private void playSelectedReplay() {
-        int idx = listScores.getSelectedIndex();
-        if (idx < 0 || idx >= replayFiles.size()) {
-            JOptionPane.showMessageDialog(this, "Selecione uma partida válida", "Aviso", JOptionPane.WARNING_MESSAGE);
+    private void refreshList() {
+        listModel.clear();
+
+        File[] rawFiles = ReplayManager.listReplayFiles();
+        if (rawFiles == null || rawFiles.length == 0) {
+            listModel.addElement("Nenhum replay encontrado.");
+            fileList.setEnabled(false);
+            mappedFiles = new File[0];
+            replayDatas = new ReplayData[0];
             return;
         }
-        String filename = "replays/" + replayFiles.get(idx);
-        String selectedItem = listModel.getElementAt(idx);
-        System.out.println("Selecionado na lista: " + selectedItem + " (índice " + idx + ")");
-        System.out.println("Arquivo correspondente: " + filename);
-        List<GameAction> actions = ReplayManager.loadReplay(filename);
-        if (!actions.isEmpty()) {
-            System.out.println("Ações carregadas: " + actions.size() + " (primeira ação: " + actions.get(0).actionType + " no frame " + actions.get(0).frameNumber + ")");
-            playManager.playReplayFromActions(actions);
-        } else {
-            JOptionPane.showMessageDialog(this, "Erro ao carregar replay.");
+
+        // Ordena por última modificação (mais recentes primeiro) para facilitar
+        Arrays.sort(rawFiles, Comparator.comparingLong(File::lastModified).reversed());
+
+        // Vamos construir listas dinâmicas (sem lidar com "added" e arrays parcialmente preenchidos)
+        java.util.List<File> mfList = new java.util.ArrayList<>();
+        java.util.List<ReplayData> rdList = new java.util.ArrayList<>();
+
+        for (File f : rawFiles) {
+            try {
+                ReplayData d = ReplayManager.loadReplay(f.getAbsolutePath());
+                String seedStr = (d == null ? "?" : String.valueOf(d.seed));
+                int actions = (d == null || d.actions == null ? 0 : d.actions.size());
+                String score = (d == null ? "?" : String.valueOf(d.score));
+                String line = String.format("%s  |  score:%s  actions:%d  seed:%s", f.getName(), score, actions, seedStr);
+                listModel.addElement(line);
+                mfList.add(f);
+                rdList.add(d);
+            } catch (Exception ex) {
+                // Em caso de erro ao ler, ainda adicionamos a linha e mapeamos o arquivo (com ReplayData null)
+                String line = String.format("%s  |  <erro ao ler>", f.getName());
+                listModel.addElement(line);
+                mfList.add(f);
+                rdList.add(null);
+            }
         }
-        dispose();
+
+        // Converte para arrays para uso no onLoad()
+        mappedFiles = mfList.toArray(new File[0]);
+        replayDatas = rdList.toArray(new ReplayData[0]);
+
+        fileList.setEnabled(true);
     }
 }

@@ -2,16 +2,18 @@ package com.tetris.model;
 
 import java.io.Serializable;
 
+/**
+ * PlayerScore simples e compatível com o repositório.
+ */
 public class PlayerScore implements Serializable {
     private static final long serialVersionUID = 1L;
 
-    public int id;  // ID único
+    public int id;  // ID único (1-based no getTopScores)
     public String name;
     public int score;
     public String date;
     public byte[] replayData;
 
-    // Construtor completo
     public PlayerScore(int id, String name, int score, String date, byte[] replayData) {
         this.id = id;
         this.name = name;
@@ -20,17 +22,11 @@ public class PlayerScore implements Serializable {
         this.replayData = replayData;
     }
 
-    // Construtor simplificado para top scores (com ID)
     public PlayerScore(int id, String name, int score) {
-        this.id = id;
-        this.name = name;
-        this.score = score;
-        this.date = "";
-        this.replayData = null;
+        this(id, name, score, "", null);
     }
 
-    // Construtor antigo para compatibilidade
     public PlayerScore(String name, int score) {
-        this(0, name, score);
+        this(0, name, score, "", null);
     }
 }
